@@ -1,0 +1,151 @@
+---
+title: "Practical machine learning course project"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+athor: Nordine RAJAOUI
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+In this project, we will use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+The goal is to predict the manner in which they did the exercise.
+
+## Preprocessing
+Let's first load the librarys:
+```{r}
+library(caret)
+
+library(rpart)
+
+library(rpart.plot)
+
+library(randomForest)
+
+library(corrplot)
+
+library(FactoMineR)
+
+library(factoextra)
+```
+Then we download the trainig and the test datas and :
+
+
+```{r}
+trainData <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+
+testData <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+
+dim(trainData)
+
+dim(testData)
+```
+
+The training data set contains 19622 observations and 160 variables, while the testing data set contains 20 observations and 160 variables. The "classe" variable in the training set is the outcome to predict. 
+Columns, which variance is near zero, does not have an impact on the outcome:
+```{r}
+nonZeroValueColumns <- nearZeroVar(trainData)
+trainSet <- trainData[,-nonZeroValueColumns]
+testSet <- testData[,-nonZeroValueColumns]
+dim(trainSet)
+```
+We now have only 100 columns. If we launch head(testData), we can see that a lot of columns contains missing values (N/A). We will remove them also:
+```{r}
+
+trainSet <- trainSet[, colSums(is.na(trainSet)) == 0]
+testSet <- testSet[, colSums(is.na(testSet)) == 0]
+dim(trainSet)
+```
+We only have now 59 columns:
+```{r}
+colnames(trainSet)
+
+```
+By looking at the first value of the 5 first columns, we can see they are only identifiers columns. X, for instance is only the identifier of the row:
+
+```{r}
+head(trainSet$X)
+
+```
+As those columns are not supposed to have an impact on the outcome, we will remove them:
+```{r}
+trainSet <- trainSet[,-(1:5)]
+testSet <- testSet[,-(1:5)]
+dim(trainSet)
+
+```
+Ok, now we have 54 variables. Which is still a lot. 
+
+## Observation (PCA)
+
+We can look at PCA to reduce:
+
+```{r}
+res.pca <- PCA(trainSet[,-54], graph = FALSE)
+eig.val <- get_eigenvalue(res.pca)
+eig.val
+
+```
+The variance explained by each eigenvalues of the covariance is given by the second column. We can see that 12 of the columns explains 79% of the variance.
+We could use PCA but as we have few variables that are correlated, we can use random forest to build our model because it automatically choose the most important variables and is robust to correlate covariates and outcome.
+
+## Fit a model with random forest
+
+First, we will split the training data in training data and cros validation data. The second one will be used to measure the biais.
+
+```{r}
+
+set.seed(12345) 
+
+inTrain <- createDataPartition(trainSet$classe, p=0.70, list=F)
+
+newTrainSet <- trainSet[inTrain, ]
+
+validationSet <- trainSet[-inTrain, ]
+
+```
+
+Then, we fit the model:
+
+```{r}
+controlRf <- trainControl(method="cv", 5)
+modelRf <- train(classe ~ ., data=newTrainSet, method="rf", trControl=controlRf, ntree=250)
+modelRf
+
+```
+
+
+Then, we estimate the performance of the model on the validation data set.  
+
+```{r, cache = T}
+
+predictRf <- predict(modelRf, validationSet)
+
+confusionMatrix(table(validationSet$classe,predictRf))
+
+
+```
+
+The accuracy is 99%.
+
+## Predicting for Test Data Set
+
+Now, we apply the model to the original testing data set downloaded from the data source. We remove the `problem_id` column first.  
+
+```{r, cache = T}
+
+result <- predict(modelRf, testSet[, -length(names(testSet))])
+
+result
+
+```  
+
+
+
+
